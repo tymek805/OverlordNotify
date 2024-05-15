@@ -37,6 +37,7 @@ class TranslationItem:
 
         msg.set_content(message)
         return msg
+    # TODO: implement __repr__
 
     def read_file(self):
         path = os.path.join(os.path.dirname(__file__), f"{self.title}_{self.volume}.txt")
@@ -98,7 +99,7 @@ class DatabaseManager:
         self.logger = prepare_logger('db')
         try:
             self.connection = sqlite3.connect(self.db_name)
-            self.logger.info(f'connected to database {self.db_name}')
+            self.logger.debug(f'connected to database {self.db_name}')
             self.connection.execute(
                 f"CREATE TABLE IF NOT EXISTS {self.table_name} (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, "
                 f"volume INTEGER, status TEXT, date DATE DEFAULT CURRENT_DATE, is_notified BOOL DEFAULT 0);"
@@ -113,9 +114,10 @@ class DatabaseManager:
     def close(self):
         if self.connection:
             self.connection.close()
-            self.logger.info(f'connection to the database {self.db_name} has been closed')
+            self.logger.debug(f'connection to the database {self.db_name} has been closed')
 
     def get_last_status(self, item: TranslationItem) -> Optional[Text]:
+        self.logger.debug(f'request for last status for {str(item)}')
         cursor = self.connection.cursor()
         cursor.execute(f"SELECT * FROM {self.table_name} WHERE title = ? AND volume = ? ORDER BY id DESC LIMIT 1;",
                        (item.title, item.volume))
@@ -124,16 +126,18 @@ class DatabaseManager:
         return results[0] if results else None
 
     def add_new_status(self, item: TranslationItem):
+        self.logger.debug(f'request to add {str(item)}')
         cursor = self.connection.cursor()
         cursor.execute(f"INSERT INTO {self.table_name} (title, volume, status) VALUES (?, ?, ?);",
                        (item.title, item.volume, item.status))
         cursor.close()
         self.connection.commit()
 
-    def email_sent(self, item: TranslationItem):
+    def update_notification_status(self, item: TranslationItem):
+        self.logger.debug(f'request to update notification status for {str(item)}')
         cursor = self.connection.cursor()
-        cursor.execute(f"UPDATE {self.table_name} (title, volume, status) VALUES ("
-                       f"'{item.title}', {item.volume}, {item.status});")
+        cursor.execute(f"UPDATE {self.table_name} (is_notified) VALUES (TRUE) "
+                       f"WHERE title = ? AND volume = ? AND status = ?;", (item.title, item.volume, item.status))
         cursor.close()
         self.connection.commit()
 
