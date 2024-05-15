@@ -130,7 +130,7 @@ class DatabaseManager:
         return results
 
 
-def prepare_logger(logger_name: str = None, log_file: str = 'notify.log', log_level: str = 'INFO') -> logging.Logger:
+def prepare_logger(logger_name: str, log_file: str = 'notify.log', log_level: str = 'INFO') -> logging.Logger:
     logger = logging.getLogger(logger_name)
     logger.setLevel(log_level)
     formatter = logging.Formatter(fmt='%(asctime)s - %(name)s:%(levelname)s - %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
@@ -175,5 +175,4 @@ def find_item(title, url, receiver_email):
             item.send_notification(receiver_email)
 
 
-prepare_logger()
 find_item('Overlord', 'https://kotori.pl/zapowiedzi/', '')
