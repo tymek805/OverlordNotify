@@ -1,4 +1,6 @@
 #!/usr/bin/python3.10
+# print("Content-Type: text/html\n\n")
+import sqlite3
 import json
 import logging
 import os.path
@@ -6,13 +8,14 @@ import sys
 from email.message import EmailMessage
 from logging import handlers
 from smtplib import SMTP_SSL, SMTPAuthenticationError
+from typing import Text, Optional
 
 import requests
 from bs4 import BeautifulSoup
 
 
 class TranslationItem:
-    def __init__(self, title, volume, status):
+    def __init__(self, title: Text, volume: Text, status: Text):
         self.title = title
         self.volume = volume
         self.status = status
@@ -58,6 +61,16 @@ class TranslationItem:
             file.close()
             return True
 
+    def check(self) -> bool:
+        db = DatabaseManager()
+        if self.status == db.get_last_status(self):
+            self.logger.info('status has not changed')
+            return False
+        else:
+            self.logger.info('status has been updated')
+            db.add_new_status(self)
+            return True
+
     def send_notification(self, receiver_email) -> bool:
         self.logger.info(f'sending notification email to {receiver_email}')
         sender_email, app_password, server_address = read_credentials()
@@ -67,7 +80,7 @@ class TranslationItem:
             server.login(sender_email, app_password)
             server.send_message(self.create_message(sender_email, receiver_email))
             server.quit()
-            self.logger.info(f'email successfully sent to {receiver_email}')
+            self.logger.info(f'email successfully sent to {receiver_email} from {sender_email}')
             return True
         except SMTPAuthenticationError:
             self.logger.error('authentication error for sending email')
@@ -75,6 +88,57 @@ class TranslationItem:
         except Exception as e:
             self.logger.error(f'error: {e}')
             return False
+
+
+class DatabaseManager:
+    db_name = 'notify_db.sqlite'
+    table_name = 'items'
+
+    def __init__(self):
+        self.logger = prepare_logger('db')
+        try:
+            self.connection = sqlite3.connect(self.db_name)
+            self.logger.info(f'connected to database {self.db_name}')
+            self.connection.execute(
+                f"CREATE TABLE IF NOT EXISTS {self.table_name} (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, "
+                f"volume INTEGER, status TEXT, date DATE DEFAULT CURRENT_DATE, is_notified BOOL DEFAULT 0);"
+            )
+        except sqlite3.Error as error:
+            self.logger.critical('error occurred - ' + str(error))
+            self.close()
+
+    def __del__(self):
+        self.close()
+
+    def close(self):
+        if self.connection:
+            self.connection.close()
+            self.logger.info(f'connection to the database {self.db_name} has been closed')
+
+    def get_last_status(self, item: TranslationItem) -> Optional[Text]:
+        cursor = self.connection.cursor()
+        cursor.execute(f"SELECT * FROM {self.table_name} WHERE title = ? AND volume = ? ORDER BY id DESC LIMIT 1;",
+                       (item.title, item.volume))
+        results = cursor.fetchall()
+        cursor.close()
+        return results[0] if results else None
+
+    def add_new_status(self, item: TranslationItem):
+        cursor = self.connection.cursor()
+        cursor.execute(f"INSERT INTO {self.table_name} (title, volume, status) VALUES (?, ?, ?);",
+                       (item.title, item.volume, item.status))
+        cursor.close()
+        self.connection.commit()
+
+    def email_sent(self, item: TranslationItem):
+        cursor = self.connection.cursor()
+        cursor.execute(f"UPDATE {self.table_name} (title, volume, status) VALUES ("
+                       f"'{item.title}', {item.volume}, {item.status});")
+        cursor.close()
+        self.connection.commit()
+
+    def items_with_unsent_notification(self):
+        ...
 
 
 def prepare_logger(logger_name: str = None, log_file: str = 'notify.log', log_level: str = 'INFO') -> logging.Logger:
@@ -100,7 +164,7 @@ def read_credentials():
     file_path = os.path.join(os.path.dirname(__file__), 'credentials.json')
     with open(file_path, 'r') as f:
         credentials = json.load(f)
-        return credentials["email"], credentials["app_password"], credentials["server"]
+        return credentials['email'], credentials['app_password'], credentials['server']
 
 
 def find_item(title, url, receiver_email):
@@ -112,16 +176,11 @@ def find_item(title, url, receiver_email):
     items = [item.get_text() for item in items if title in item.get_text()]
     for item in items:
         item, status = [elem.strip() for elem in item.split('–')]
-        volume = item.split('#')[-1]
+        item = TranslationItem(title, item.split('#')[-1], status)
+        item.check()
+        # if item.check_for_update():
+        #     item.send_notification(receiver_email)
 
-        item = TranslationItem(title, volume, status)
-        if item.check_for_update():
-            item.send_notification(receiver_email)
 
-
-if __name__ == "__main__":
-    prepare_logger()
-    if len(sys.argv) == 2:
-        find_item('Overlord', 'https://kotori.pl/zapowiedzi/', sys.argv[1])
-    else:
-        logging.critical('missing necessary argument: [receiver_email]')
+prepare_logger()
+find_item('Overlord', 'https://kotori.pl/zapowiedzi/', '?')
