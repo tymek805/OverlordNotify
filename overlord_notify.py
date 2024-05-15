@@ -176,4 +176,4 @@ def find_item(title, url, receiver_email):
 
 
 prepare_logger()
-find_item('Overlord', 'https://kotori.pl/zapowiedzi/', 'tymoteusz.lango@gmail.com')
+find_item('Overlord', 'https://kotori.pl/zapowiedzi/', '')
