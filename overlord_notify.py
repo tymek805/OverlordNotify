@@ -119,11 +119,11 @@ class DatabaseManager:
     def get_last_status(self, item: TranslationItem) -> Optional[Text]:
         self.logger.debug(f'request for last status for {str(item)}')
         cursor = self.connection.cursor()
-        cursor.execute(f"SELECT * FROM {self.table_name} WHERE title = ? AND volume = ? ORDER BY id DESC LIMIT 1;",
+        cursor.execute(f"SELECT status FROM {self.table_name} WHERE title = ? AND volume = ? ORDER BY id DESC LIMIT 1;",
                        (item.title, item.volume))
         results = cursor.fetchall()
         cursor.close()
-        return results[0] if results else None
+        return results[0][0] if results else None
 
     def add_new_status(self, item: TranslationItem):
         self.logger.debug(f'request to add {str(item)}')
@@ -181,7 +181,7 @@ def find_item(title, url, receiver_email):
     for item in items:
         item, status = [elem.strip() for elem in item.split('–')]
         item = TranslationItem(title, item.split('#')[-1], status)
-        item.check()
+        print(item.check())
         # if item.check_for_update():
         #     item.send_notification(receiver_email)
 
